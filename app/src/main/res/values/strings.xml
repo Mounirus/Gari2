@@ -1,0 +1,89 @@
+<resources>
+    <string name="app_name">Gari</string>
+    <string name="title_activity_maps">Map</string>
+
+    <!--    Permissions    -->
+    <string name="permission_rationale_location">Access to the location service is required to demonstrate the \'my location\' feature, which shows your current location on the map.</string>
+    <string name="location_permission_denied">This sample requires location permission to enable the \'my location\' layer. Please try again and grant access to use the location.\nIf the permission has been permanently denied, it can be enabled from the System Settings &gt; Apps &gt; \'Google Maps API Demos\'.</string>
+    <string name="permission_required_toast">Location permission is required for this demo.</string>
+    <string name="title_activity_main">MainActivity</string>
+
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+
+    <!-- Formulaire -->
+
+    <string name="nom">Entrer votre nom</string>
+    <string name="email">Entrer votre email</string>
+    <string name="mobile">Entrer votre N° de mobile (Facultatif)</string>
+    <string name="err_nom">Veuillez entrer votre nom</string>
+    <string name="err_email">Veuillez entrer un email valide</string>
+    <string name="err_mobile">Veuillez entrer un numéro valide</string>
+    <string name="err_type">Veuillez séléctionner un type de véhicule</string>
+    <string name="err_marque">Selectionner votre marque de voiture</string>
+    <string name="err_modele">Selectionner votre modele de voiture</string>
+    <string name="err_couleur">Selectionner votre couleur de voiture</string>
+    <string name="err_matricule">Entrer votre matricule</string>
+    <string name="login_with_us">Inscrivez-vous</string>
+    <string name="register">Valider</string>
+    <string name="clear">Effacer</string>
+    <string name="password">Votre mot de passe</string>
+    <string name="password2">Répéter mot de passe</string>
+    <string name="loginText">Se connecter à Garini</string>
+    <string name="err_password">Veuillez entrer un mot de passe valide</string>
+    <string name="err_password2">Les deux mot de passe ne sont pas identique !</string>
+    <string name="enregisterVous">Vous n\'avez pas de compte ? Enregistrer vous !</string>
+    <string name="create_compte">Créer votre compte</string>
+    <string name="inscription">Inscription Garini</string>
+
+
+    <string name="action_settings">Settings</string>
+
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+
+    <string name="facebook_app_id">235255703583290</string>
+    <string name="title_activity_login">LoginActivity</string>
+    <string name="title_activity_next">NextActivity</string>
+
+    <string name="new_message_notification_title_template">Garini : %1$s</string>
+
+    <!-- TODO: remove this placeholder text -->
+    <string name="new_message_notification_placeholder_text_template">You said %1$s and lorem ipsum
+        dolor sit amet, consectetur adipiscing elit. Etiam non enim magna. Morbi dictum, velit vel
+        semper venenatis, magna odio volutpat velit, at ullamcorper nulla lacus sed turpis.
+        Pellentesque vitae metus elit, nec tincidunt tellus. Integer sed nisl sem, ullamcorper
+        ornare lacus. Duis ac mauris sed massa congue volutpat. Donec sed erat sit amet turpis
+        viverra rhoncus sit amet nec magna. Donec lacinia ligula at libero volutpat volutpat nec nec
+        tortor.
+    </string>
+
+    <string name="action_share">Partager</string>
+    <string name="action_reply">Répondre</string>
+    <string name="title_activity_main2">Main2Activity</string>
+    <string name="title_activity_test">TestActivity</string>
+    <string name="title_activity_historique">HistoriqueActivity</string>
+    <string name="section_format">Hello World from section: %1$d</string>
+
+    <string name="purchase">Purchase</string>
+    <string name="valid">Form is valid</string>
+    <string name="invalid">Form is invalid</string>
+    <string name="light_theme_form">Light Theme</string>
+    <string name="dark_theme_form">Dark Theme</string>
+    <string name="scan_with_card_io">Scan with card.io</string>
+    <string name="title_activity_map">MapActivity</string>
+
+    <string name="donner">Donner ma place</string>
+    <string name="trouver">Réserver une place à proximité</string>
+    <string name="trouver_search">GARI recherche une place pour vous (temps d\'attente estimé à 5mn)</string>
+    <string name="trouver_ok">Donner ma place</string>
+    <string name="merci">Merci pour votre précieuse contribution, à votre tour de réserver une place de stationnement avec GARI.</string>
+    <string name="dite_merci">Dites merci à <b>%1$s</b></string>
+
+    <string name="place_trouver">Youpi!! La voiture <b>%1$s</b> de couleur <b>%2$s</b> et immatriculée: <b>%3$s</b> vous attend !\nSuivez le tracé rouge pour vous y rendre.\nla place sera libre a : <b>%4$s</b> \nDistance: <b>%5$s</b> Durée du trajet: <b>%6$s</b></string>
+
+    <string name="donner_attribuer">Bravo, votre place a été attribuée à la voiture <b>%1$s</b> de couleur <b>%2$s</b> et le matricule: <b>%3$s</b>\nHeure d\'arrivée estimée: <b>%4$s</b>\nMerci d\'attendre l\'arrivée de <b>%5$s</b> pour valider vos points.</string>
+
+    <string name="signaler">Vous n\'avez pas attendu, vos points ne seront pas valider.</string>
+
+</resources>

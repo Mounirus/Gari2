@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical" android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="5dp"
+    android:gravity="center_horizontal"
+    android:background="@color/colorPrimary"
+    >
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="5dp"
+        android:padding="5dp"
+        android:gravity="center"
+        android:textStyle="bold"
+        android:textSize="18dp"
+        android:textColor="@color/blanc"
+        android:text="Signler un bug ou un probléme"
+        />
+    <android.support.design.widget.TextInputLayout
+        android:id="@+id/titre"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="5dp"
+        android:textColorHint="@color/cardview_light_background"
+        android:theme="@style/Theme.App.Base">
+
+        <AutoCompleteTextView
+            android:id="@+id/txttitre"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Titre"
+            android:imeOptions="actionDone"
+            android:maxLines="1"
+            android:inputType="text"
+            android:textSize="18dp"
+            android:textColor="?android:attr/textColorPrimaryInverse"
+            android:textColorHint="@color/cardview_light_background" />
+    </android.support.design.widget.TextInputLayout>
+
+    <android.support.design.widget.TextInputLayout
+        android:id="@+id/com"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="5dp"
+        android:textColorHint="@color/cardview_light_background"
+        android:theme="@style/Theme.App.Base">
+
+        <AutoCompleteTextView
+            android:id="@+id/txtcom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Déscription"
+            android:imeOptions="actionDone"
+            android:inputType="textMultiLine"
+            android:textSize="18dp"
+            android:textColor="?android:attr/textColorPrimaryInverse"
+            android:textColorHint="@color/cardview_light_background" />
+    </android.support.design.widget.TextInputLayout>
+
+    <Button
+        android:id="@+id/btnValider"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="5dp"
+        android:text="Envoyer"
+        android:textColor="@color/blanc"
+        android:theme="@style/AppTheme.Button" />
+</LinearLayout>
