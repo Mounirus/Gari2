@@ -2,8 +2,10 @@ package com.app.garini.garini;
 
 
 import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -16,6 +18,7 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.text.Html;
 import android.util.Log;
@@ -28,6 +31,7 @@ import android.widget.Toast;
 import com.app.garini.garini.login.User;
 import com.app.garini.garini.service.CleanService;
 import com.app.garini.garini.service.TrouverService;
+import com.app.garini.garini.service.checkTrouverService;
 import com.app.garini.garini.utile.DirectionsJSONParser;
 import com.app.garini.garini.utile.PermissionUtils;
 import com.app.garini.garini.utile.StaticValue;
@@ -99,12 +103,12 @@ public class MapActivityTrouver extends AppCompatActivity implements
     LinearLayout  trouver_search, attiruber_layout2;
     LatLng currentLatLng, destinationLatLng;
     int id_user;
-    int id_trouver = 0, id_attribuer = 0,id_donner = 0;
+    int id_trouver = 0, id_attribuer = 0;
     String marque, modele, couleur, matricule, heur_liberer,nom_user;
     boolean isFinished = false;
     UserSessionManager pref;
-    TimerTask taskTrouver,taskTrouverCheck;
-    ProgressDialog dialog_attribuer;
+    TimerTask taskTrouverCheck;
+    boolean check = false;
     TextView txt_attribuer2;
     String currentAdresse = null;
     double lat,lng;
@@ -113,12 +117,126 @@ public class MapActivityTrouver extends AppCompatActivity implements
     boolean timelimit = false;
     PowerManager pm;
     PowerManager.WakeLock wl;
+    private BroadcastReceiver mMessageReceiverTrouverService = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            timelimit = intent.getBooleanExtra("timelimit",false);
+            if(timelimit){
+                trouver_search.setVisibility(View.GONE);
+                new LovelyStandardDialog(MapActivityTrouver.this)
+                        .setTopColorRes(R.color.colorPrimary)
+                        .setButtonsColorRes(R.color.colorAccent)
+                        .setIcon(R.drawable.ic_directions_car_white_24dp)
+                        .setTitle("Donner votre place")
+                        .setMessage("Aucune place trouver, voulez affectuer une nouvelle recherche ?")
+                        .setPositiveButton(android.R.string.ok, new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+
+
+                                trouver_search.setVisibility(View.GONE);
+                                new AnnulerTrouverTask().execute(true);
+                            }
+                        })
+                        .setNegativeButton(android.R.string.no, new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                new AnnulerTrouverTask().execute(false);
+
+
+                            }
+                        }).show();
+
+            }else{
+                id_attribuer = intent.getIntExtra("id_attribuer",0);
+                if(id_attribuer!=0){
+                    pref.createAttribuer(id_attribuer);
+                    double lat_destination = intent.getDoubleExtra("lat_destination",0);
+                    double lng_destination = intent.getDoubleExtra("lng_destination",0);
+                    destinationLatLng = new LatLng(lat_destination, lng_destination);
+                    heur_liberer = intent.getStringExtra("heur_liberer");
+                    marque = intent.getStringExtra("marque");
+                    modele = intent.getStringExtra("modele");
+                    couleur = intent.getStringExtra("couleur");
+                    matricule = intent.getStringExtra("matricule");
+                    nom_user = intent.getStringExtra("nom_user");
+                    new LovelyStandardDialog(MapActivityTrouver.this)
+                            .setTopColorRes(R.color.colorPrimary)
+                            .setButtonsColorRes(R.color.colorAccent)
+                            .setIcon(R.drawable.ic_directions_car_white_24dp)
+                            .setTitle("Donner votre place")
+                            .setMessage("un automibiliste a été trouver, confirmez-vous la libération de votre place ?")
+                            .setPositiveButton("Oui", new View.OnClickListener() {
+                                @Override
+                                public void onClick(View v) {
+                                    MarkerOptions markerOptions = new MarkerOptions();
+                                    markerOptions.position(destinationLatLng);
+                                    markerOptions.title(marque+" "+modele+" "+couleur);
+                                    markerOptions.snippet("En attente...");
+                                    Marker marker = mGoogleMap.addMarker(markerOptions);
+                                    marker.showInfoWindow();
+                                    mGoogleMap.animateCamera(CameraUpdateFactory.zoomTo(14));
+
+                                    String url = getDirectionsUrl(currentLatLng, destinationLatLng);
+                                    DownloadTask downloadTask = new DownloadTask();
+                                    downloadTask.execute(url);
+                                    new GoogMatrixRequestTrouver().execute(currentLatLng.latitude+"",currentLatLng.longitude+"",destinationLatLng.latitude+"",destinationLatLng.longitude+"",heur_liberer);
+                                }
+                            })
+                            .setNegativeButton("Non", new View.OnClickListener() {
+                                @Override
+                                public void onClick(View v) {
+                                    trouver_search.setVisibility(View.GONE);
+                                    new AnnulerAttribuerTask().execute(false);
+
+                                }
+                            }).show();
+                }
+            }
+        }
+    };
+
+    private BroadcastReceiver mMessageReceiverCheckService = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            check = intent.getBooleanExtra("check",false);
+            if(check){
+                id_attribuer = intent.getIntExtra("id_attribuer",0);
+                if(id_attribuer!=0){
+                    new LovelyStandardDialog(MapActivityTrouver.this)
+                            .setTopColorRes(R.color.colorPrimary)
+                            .setButtonsColorRes(R.color.colorAccent)
+                            .setIcon(R.drawable.ic_directions_car_white_24dp)
+                            .setTitle("Trouver une place")
+                            .setMessage("La place a été supprimer , voulez vous rechercher une autre place ?")
+                            .setPositiveButton(android.R.string.ok, new View.OnClickListener() {
+                                @Override
+                                public void onClick(View v) {
+                                    trouver_search.setVisibility(View.GONE);
+                                    new AnnulerAttribuerTask().execute(true);
+                                }
+                            })
+                            .setNegativeButton(android.R.string.no, new View.OnClickListener() {
+                                @Override
+                                public void onClick(View v) {
+                                    trouver_search.setVisibility(View.GONE);
+                                    new AnnulerAttribuerTask().execute(false);
+
+                                }
+                            }).show();
+                }
+
+            }
+        }
+    };
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.map_trouver);
-
 
         pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wl = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, "Gari");
@@ -137,11 +255,51 @@ public class MapActivityTrouver extends AppCompatActivity implements
             if(inBundle.get("id_trouver") !=null){
                 id_trouver = inBundle.getInt("id_trouver");
             }
-            if(inBundle.get("id_donner") !=null){
-                id_donner = inBundle.getInt("id_donner");
+            if(inBundle.get("id_attribuer") !=null){
+                pref.createAttribuer(id_attribuer);
+                id_attribuer = inBundle.getInt("id_attribuer");
+                double lat_destination = inBundle.getDouble("lat_destination");
+                double lng_destination = inBundle.getDouble("lng_destination");
+                destinationLatLng = new LatLng(lat_destination, lng_destination);
+                heur_liberer = inBundle.getString("heur_liberer");
+                marque = inBundle.getString("marque");
+                modele = inBundle.getString("modele");
+                couleur = inBundle.getString("couleur");
+                matricule = inBundle.getString("matricule");
+                nom_user = inBundle.getString("nom_user");
             }
             if(inBundle.get("timelimit")!=null){
                 timelimit = inBundle.getBoolean("timelimit");
+            }
+            if(inBundle.get("check")!=null){
+                check = inBundle.getBoolean("check");
+                if(check){
+                    id_attribuer = inBundle.getInt("id_attribuer");
+                    if(id_attribuer!=0){
+                        new LovelyStandardDialog(MapActivityTrouver.this)
+                                .setTopColorRes(R.color.colorPrimary)
+                                .setButtonsColorRes(R.color.colorAccent)
+                                .setIcon(R.drawable.ic_directions_car_white_24dp)
+                                .setTitle("Trouver une place")
+                                .setMessage("La place a été supprimer , voulez vous rechercher une autre place ?")
+                                .setPositiveButton(android.R.string.ok, new View.OnClickListener() {
+                                    @Override
+                                    public void onClick(View v) {
+                                        trouver_search.setVisibility(View.GONE);
+                                        new AnnulerAttribuerTask().execute(true);
+                                    }
+                                })
+                                .setNegativeButton(android.R.string.no, new View.OnClickListener() {
+                                    @Override
+                                    public void onClick(View v) {
+                                        trouver_search.setVisibility(View.GONE);
+                                        new AnnulerAttribuerTask().execute(false);
+
+                                    }
+                                }).show();
+                    }
+
+                }
             }
         }
 
@@ -247,8 +405,8 @@ public class MapActivityTrouver extends AppCompatActivity implements
                         .setPositiveButton("Oui", new View.OnClickListener() {
                             @Override
                             public void onClick(View v) {
-                                new AnnulerAttribuerTask().execute();
-                                new AnnulerTrouverTask().execute(false);
+                                stopService(new Intent(MapActivityTrouver.this, checkTrouverService.class));
+                                new AnnulerAttribuerTask().execute(false);
                             }
                         })
                         .setNegativeButton("Non", new View.OnClickListener() {
@@ -292,10 +450,9 @@ public class MapActivityTrouver extends AppCompatActivity implements
             new GetAddressTask().execute(lat+"",lng+"");
             if(pref.getIdTrouver()!=0){
                 id_trouver = pref.getIdTrouver();
-                new AnnulerTrouverTask().execute(false);
                 if(pref.getIdAttribuer()!=0){
                     id_attribuer = pref.getIdAttribuer();
-                    new AnnulerAttribuerTask().execute();
+                    new AnnulerAttribuerTask().execute(false);
                 }
             }
         }else{
@@ -326,11 +483,10 @@ public class MapActivityTrouver extends AppCompatActivity implements
                                 public void onClick(View v) {
                                     new AnnulerTrouverTask().execute(false);
 
-
                                 }
                             }).show();
                 }else
-                if(id_donner != 0 ){
+                if(id_attribuer != 0 ){
 
                     new LovelyStandardDialog(MapActivityTrouver.this)
                             .setTopColorRes(R.color.colorPrimary)
@@ -341,22 +497,28 @@ public class MapActivityTrouver extends AppCompatActivity implements
                             .setPositiveButton("Oui", new View.OnClickListener() {
                                 @Override
                                 public void onClick(View v) {
-                                    new AttribuerTaskTrouver().execute(id_donner+"",id_trouver+"",id_attribuer+"");
+                                    MarkerOptions markerOptions = new MarkerOptions();
+                                    markerOptions.position(destinationLatLng);
+                                    markerOptions.title(marque+" "+modele+" "+couleur);
+                                    markerOptions.snippet("En attente...");
+                                    Marker marker = mGoogleMap.addMarker(markerOptions);
+                                    marker.showInfoWindow();
+                                    mGoogleMap.animateCamera(CameraUpdateFactory.zoomTo(14));
+
+                                    String url = getDirectionsUrl(currentLatLng, destinationLatLng);
+                                    DownloadTask downloadTask = new DownloadTask();
+                                    downloadTask.execute(url);
+                                    new GoogMatrixRequestTrouver().execute(currentLatLng.latitude+"",currentLatLng.longitude+"",destinationLatLng.latitude+"",destinationLatLng.longitude+"",heur_liberer);
                                 }
                             })
                             .setNegativeButton("Non", new View.OnClickListener() {
                                 @Override
                                 public void onClick(View v) {
                                     trouver_search.setVisibility(View.GONE);
-                                    new AnnulerTrouverTask().execute(false);
+                                    new AnnulerAttribuerTask().execute(false);
 
                                 }
                             }).show();
-                }else{
-                    if (pref.isAttribuer()){
-                        id_attribuer = pref.getIdAttribuer();
-
-                    }
                 }
             }
         }
@@ -529,8 +691,9 @@ public class MapActivityTrouver extends AppCompatActivity implements
                                     pref.deleteAttribuer();
                                     pref.setIdAttribuer(0);
                                     pref.setIdDonner(0);
-                                    //onLocationChanged(current);
-                                    //attiruber_layout2.setVisibility(View.GONE);
+                                    Intent intent = new Intent(MapActivityTrouver.this, MainActivity.class);
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                    startActivity(intent);
                                     finish();
                                 }
                             })
@@ -544,8 +707,9 @@ public class MapActivityTrouver extends AppCompatActivity implements
                                     pref.deleteAttribuer();
                                     pref.setIdAttribuer(0);
                                     pref.setIdDonner(0);
-                                    //onLocationChanged(current);
-                                    //attiruber_layout2.setVisibility(View.GONE);
+                                    Intent intent = new Intent(MapActivityTrouver.this, MainActivity.class);
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                    startActivity(intent);
                                     finish();
                                 }
                             }).show();
@@ -586,19 +750,28 @@ public class MapActivityTrouver extends AppCompatActivity implements
             showMissingPermissionError();
             mPermissionDenied = false;
         }
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+                mMessageReceiverTrouverService, new IntentFilter("trouverService"));
+
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+                mMessageReceiverCheckService, new IntentFilter("checkTrouverService"));
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         active = false;
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiverTrouverService);
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiverCheckService);
+        wl.release();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
         active = false;
-        wl.release();
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiverTrouverService);
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiverCheckService);
     }
 
     @Override
@@ -628,7 +801,7 @@ public class MapActivityTrouver extends AppCompatActivity implements
                 json_string = response.body().string();
 
             } catch (@NonNull IOException e) {
-                Log.e("Json ErrorMarque", "" + e.getLocalizedMessage());
+                Log.e("Json GetAddressTask", "" + e.getLocalizedMessage());
             }
 
             return json_string;
@@ -687,9 +860,10 @@ public class MapActivityTrouver extends AppCompatActivity implements
         }
     }
 
-    public class AnnulerAttribuerTask extends AsyncTask<String, Void, Void> {
+    public class AnnulerAttribuerTask extends AsyncTask<Boolean, Void, Boolean> {
 
-        protected Void doInBackground(String... params) {
+        protected Boolean doInBackground(Boolean... params) {
+
             if(id_attribuer != 0){
                 try {
                     OkHttpClient client = new OkHttpClient();
@@ -704,15 +878,15 @@ public class MapActivityTrouver extends AppCompatActivity implements
                     response.body().string();
 
                 } catch (@NonNull IOException e) {
-                    Log.e("Json ErrorMarque", "" + e.getLocalizedMessage());
+                    Log.e("AnnulerAttribuerTask", "" + e.getLocalizedMessage());
                 }
             }
-            return null;
+            return params[0];
         }
 
         @Override
-        protected void onPostExecute(Void aVoid) {
-            super.onPostExecute(aVoid);
+        protected void onPostExecute(Boolean repeat) {
+            super.onPostExecute(repeat);
             id_attribuer = 0;
             pref.deleteAttribuer();
 
@@ -720,6 +894,7 @@ public class MapActivityTrouver extends AppCompatActivity implements
                 attiruber_layout2.setVisibility(View.GONE);
             }
             pref.setIdAttribuer(0);
+            new AnnulerTrouverTask().execute(repeat);
         }
     }
 
@@ -759,7 +934,7 @@ public class MapActivityTrouver extends AppCompatActivity implements
                 json_string = response.body().string();
 
             } catch (@NonNull IOException e) {
-                Log.e("Json ErrorMarque", "" + e.getLocalizedMessage());
+                Log.e("Json TrouverTask", "" + e.getLocalizedMessage());
             }
 
             return json_string;
@@ -793,13 +968,13 @@ public class MapActivityTrouver extends AppCompatActivity implements
 
                         id_trouver = jsonObject.getInt("id_trouver");
                         pref.createTrouver(id_trouver);
-                        dialog_donner = new LovelyInfoDialog(MapActivityTrouver.this);
+                        /*dialog_donner = new LovelyInfoDialog(MapActivityTrouver.this);
                         dialog_donner.setTopColorRes(R.color.colorPrimary)
                                 .setIcon(R.drawable.ic_directions_car_white_24dp)
                                 //This will add Don't show again checkbox to the dialog. You can pass any ID as argument
                                 .setTitle("Trouver une place")
                                 .setMessage("Nous allons trouver une place pour vous, temps d’attente 5mn.")
-                                .show();
+                                .show();*/
                         //setRepeatingAsyncTaskTrouver(id_trouver);
                         Intent intent = new Intent(MapActivityTrouver.this, TrouverService.class);
                         intent.putExtra("id_trouver",id_trouver);
@@ -820,130 +995,6 @@ public class MapActivityTrouver extends AppCompatActivity implements
         }
     }
 
-    /*private void setRepeatingAsyncTaskTrouver(final int id_trouver) {
-
-        final Handler handler = new Handler();
-        final Timer timer = new Timer();
-
-        taskTrouver = new TimerTask() {
-            long t0 = System.currentTimeMillis();
-            @Override
-            public void run() {
-                if (System.currentTimeMillis() - t0 > 60 * 1000 * 5) {
-                    cancel();
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            new LovelyStandardDialog(MapActivityTrouver.this)
-                                    .setTopColorRes(R.color.colorPrimary)
-                                    .setButtonsColorRes(R.color.colorAccent)
-                                    .setIcon(R.drawable.ic_directions_car_white_24dp)
-                                    .setTitle("Trouver votre place")
-                                    .setMessage("Aucun Garini ne s'est signalé, voulez-vous poursuivre la recherche ?")
-                                    .setPositiveButton(android.R.string.ok, new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View v) {
-
-                                            setRepeatingAsyncTaskTrouver(id_trouver);
-                                        }
-                                    })
-                                    .setNegativeButton(android.R.string.no, new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View v) {
-                                            new AnnulerTrouverTask().execute();
-                                            trouver_search.setVisibility(View.GONE);
-                                        }
-                                    }).show();
-                        }
-                    });
-                }else {
-                    handler.post(new Runnable() {
-                        public void run() {
-                            try {
-                                new AfterTrouverTask().execute(id_trouver+"");
-                            } catch (Exception e) {
-
-                            }
-                        }
-                    });
-                }
-            }
-        };
-        timer.schedule(taskTrouver, 0, 6*1000);  // interval of one minute
-
-    }
-
-    class AfterTrouverTask extends AsyncTask<String, Void, String> {
-
-        int id_donner;
-        @Override
-        protected String doInBackground(String... params) {
-            Response response = null;
-            String json_string = null;
-            try {
-                OkHttpClient client = new OkHttpClient();
-                RequestBody body = new FormBody.Builder()
-                        .add("id_trouver",params[0])
-                        .build();
-                Request request = new Request.Builder()
-                        .url(URL+"donner_service.php")
-                        .post(body)
-                        .build();
-                response = client.newCall(request).execute();
-                json_string = response.body().string();
-
-            } catch (@NonNull IOException e) {
-                Log.e("Json ErrorMarque", "" + e.getLocalizedMessage());
-            }
-
-            return json_string;
-        }
-
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-        }
-
-        @Override
-        protected void onPostExecute(String s) {
-            super.onPostExecute(s);
-            Log.e("Test",s);
-            if (s != null && !s.equals("null")) {
-                try {
-                    JSONObject jsonObject = new JSONObject(s);
-                    boolean donner = jsonObject.getBoolean("donner");
-                    if(donner){
-                        id_donner = jsonObject.getInt("id");
-                        new LovelyStandardDialog(MapActivityTrouver.this)
-                                .setTopColorRes(R.color.colorPrimary)
-                                .setButtonsColorRes(R.color.colorAccent)
-                                .setIcon(R.drawable.ic_directions_car_white_24dp)
-                                .setTitle("Trouver une place")
-                                .setMessage("une place a été trouver, voulez-vous prendre cette place ?")
-                                .setPositiveButton("Oui", new View.OnClickListener() {
-                                    @Override
-                                    public void onClick(View v) {
-                                        new AttribuerTaskTrouver().execute(id_donner+"",id_trouver+"",id_attribuer+"");
-                                    }
-                                })
-                                .setNegativeButton("Non", new View.OnClickListener() {
-                                    @Override
-                                    public void onClick(View v) {
-                                        new AnnulerTrouverTask().execute();
-                                        trouver_search.setVisibility(View.GONE);
-
-                                    }
-                                }).show();
-
-                        taskTrouver.cancel();
-                    }
-
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-    }*/
 
     public class AnnulerTrouverTask extends AsyncTask<Boolean, Void, Boolean> {
 
@@ -964,7 +1015,7 @@ public class MapActivityTrouver extends AppCompatActivity implements
                     response.body().string();
 
                 } catch (@NonNull IOException e) {
-                    Log.e("Json ErrorMarque", "" + e.getLocalizedMessage());
+                    Log.e("Json AnnulerTrouverTask", "" + e.getLocalizedMessage());
                 }
             }
             return params[0];
@@ -993,134 +1044,6 @@ public class MapActivityTrouver extends AppCompatActivity implements
             diag.setTitle("Patientez un instant SVP...");
             diag.setMessage("traitement en cours ");
             diag.show();
-        }
-    }
-
-    class AttribuerTaskTrouver extends AsyncTask<String, Void, String> {
-
-        @Override
-        protected String doInBackground(String... params) {
-            Response response = null;
-            String json_string = null;
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            String currentDateandTime = sdf.format(new Date());
-            try {
-                OkHttpClient client = new OkHttpClient();
-                RequestBody body = new FormBody.Builder()
-                        .add("id_attribuer",params[2])
-                        .add("id_donner",params[0])
-                        .add("id_trouver",params[1])
-                        .add("date_heur",currentDateandTime)
-                        .build();
-                Request request = new Request.Builder()
-                        .url(URL+"attribuer_trouver.php")
-                        .post(body)
-                        .build();
-                response = client.newCall(request).execute();
-                json_string = response.body().string();
-
-            } catch (@NonNull IOException e) {
-                Log.e("Json ErrorMarque", "" + e.getLocalizedMessage());
-            }
-
-            return json_string;
-        }
-
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-            dialog_attribuer = new ProgressDialog(MapActivityTrouver.this);
-            dialog_attribuer.setCancelable(false);
-            dialog_attribuer.setTitle("Patientez un instant SVP...");
-            dialog_attribuer.setMessage("traitement en cours ");
-            dialog_attribuer.show();
-        }
-
-        @Override
-        protected void onPostExecute(String s) {
-            super.onPostExecute(s);
-            JSONObject jsonObject = null;
-            boolean error = false;
-            boolean annuler = false;
-
-            if (s != null && !s.equals("null")) {
-                Log.e("attribuer_trouver", s);
-                try {
-                    jsonObject = new JSONObject(s);
-                    error = jsonObject.getBoolean("error");
-                    annuler = jsonObject.getBoolean("annuler");
-                    if(error){
-                        Toast.makeText(MapActivityTrouver.this,"Une erreur est survenue, veuillez recommencer",Toast.LENGTH_SHORT).show();
-                        new AnnulerTrouverTask().execute(false);
-                        new AnnulerAttribuerTask().execute(id_attribuer+"");
-                        dialog_attribuer.dismiss();
-                    }else {
-                        id_attribuer = jsonObject.getInt("id_attribuer");
-                        if(annuler){
-                            dialog_attribuer.dismiss();
-                            new AnnulerAttribuerTask().execute(id_attribuer+"");
-                            new LovelyStandardDialog(MapActivityTrouver.this)
-                                    .setTopColorRes(R.color.colorPrimary)
-                                    .setButtonsColorRes(R.color.colorAccent)
-                                    .setIcon(R.drawable.ic_directions_car_white_24dp)
-                                    .setTitle("Trouver une place")
-                                    .setMessage("La place a été supprimer , voulez rechercher une autre place ?")
-                                    .setPositiveButton(android.R.string.ok, new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View v) {
-                                            id_trouver = pref.getIdTrouver();
-                                            trouver_search.setVisibility(View.GONE);
-                                            new AnnulerTrouverTask().execute(true);
-
-                                        }
-                                    })
-                                    .setNegativeButton(android.R.string.no, new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View v) {
-                                            new AnnulerTrouverTask().execute(false);
-                                            trouver_search.setVisibility(View.GONE);
-
-                                        }
-                                    }).show();
-                        }else{
-                            marque = jsonObject.getString("marque");
-                            modele = jsonObject.getString("modele");
-                            couleur = jsonObject.getString("couleur");
-                            matricule = jsonObject.getString("matricule");
-                            nom_user = jsonObject.getString("nom");
-                            double lat_destination = jsonObject.getDouble("lat");
-                            double lng_destination = jsonObject.getDouble("lng");
-                            String heur_liberer = jsonObject.getString("heur_liberer");
-
-                            destinationLatLng = new LatLng(lat_destination, lng_destination);
-
-                            MarkerOptions markerOptions = new MarkerOptions();
-                            markerOptions.position(destinationLatLng);
-                            markerOptions.title(marque+" "+modele+" "+couleur);
-                            markerOptions.snippet("En attente...");
-                            Marker marker = mGoogleMap.addMarker(markerOptions);
-                            marker.showInfoWindow();
-                            mGoogleMap.animateCamera(CameraUpdateFactory.zoomTo(14));
-
-                            if(dialog_donner != null){
-                                dialog_donner.dismiss();
-                            }
-                            pref.createAttribuer(id_attribuer);
-
-                            String url = getDirectionsUrl(currentLatLng, destinationLatLng);
-                            DownloadTask downloadTask = new DownloadTask();
-                            downloadTask.execute(url);
-                            new GoogMatrixRequestTrouver().execute(currentLatLng.latitude+"",currentLatLng.longitude+"",destinationLatLng.latitude+"",destinationLatLng.longitude+"",heur_liberer);
-                        }
-
-
-                    }
-
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
-
         }
     }
 
@@ -1296,7 +1219,7 @@ public class MapActivityTrouver extends AppCompatActivity implements
 
 
             } catch (@NonNull IOException e) {
-                Log.e("Json ErrorMarque", "" + e.getLocalizedMessage());
+                Log.e("GMatrixRequestTrouver", "" + e.getLocalizedMessage());
             }
 
             return json_string;
@@ -1324,8 +1247,6 @@ public class MapActivityTrouver extends AppCompatActivity implements
                     String distance = jsonRespRouteDistance.get("text").toString();
                     String duration = jsonRespRouteTime.get("text").toString();
 
-                    dialog_attribuer.dismiss();
-
                     String text = getString(R.string.place_trouver, marque+" "+modele, couleur,matricule,heur_liberer,distance,duration);
                     /*String html = "Une place vous a été attribué, siuvez le tracer rouge pour vous y rendre <br/>" +
                             "<b>"+marque+" "+modele+" "+couleur+"</b>" +
@@ -1338,7 +1259,12 @@ public class MapActivityTrouver extends AppCompatActivity implements
                     txt_attribuer2.setText(text);
                     trouver_search.setVisibility(View.GONE);
                     attiruber_layout2.setVisibility(View.VISIBLE);
-                    setRepeatingAsyncTaskCheck();
+                    Intent intent = new Intent(MapActivityTrouver.this, checkTrouverService.class);
+                    intent.putExtra("id_attribuer",id_attribuer);
+                    intent.putExtra("lat",lat);
+                    intent.putExtra("lng",lng);
+                    intent.putExtra("nb_point",nb_point);
+                    startService(intent);
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
@@ -1365,7 +1291,7 @@ public class MapActivityTrouver extends AppCompatActivity implements
 
 
             } catch (@NonNull IOException e) {
-                Log.e("Json ErrorMarque", "" + e.getLocalizedMessage());
+                Log.e("Json FinalTask", "" + e.getLocalizedMessage());
             }
 
             return null;
@@ -1397,7 +1323,7 @@ public class MapActivityTrouver extends AppCompatActivity implements
                 json_string = response.body().string();
 
             } catch (@NonNull IOException e) {
-                Log.e("Json ErrorMarque", "" + e.getLocalizedMessage());
+                Log.e("Json AfterAttribuerTask", "" + e.getLocalizedMessage());
             }
 
             return json_string;
@@ -1422,7 +1348,6 @@ public class MapActivityTrouver extends AppCompatActivity implements
                         int etat = jsonObject.getInt("etat");
                         if(valider == 2 || etat==2){
                             taskTrouverCheck.cancel();
-                            new AnnulerAttribuerTask().execute(id_attribuer+"");
                             new LovelyStandardDialog(MapActivityTrouver.this)
                                     .setTopColorRes(R.color.colorPrimary)
                                     .setButtonsColorRes(R.color.colorAccent)
@@ -1432,23 +1357,19 @@ public class MapActivityTrouver extends AppCompatActivity implements
                                     .setPositiveButton(android.R.string.ok, new View.OnClickListener() {
                                         @Override
                                         public void onClick(View v) {
-
-                                            finish();
-                                            startActivity(getIntent());
-
+                                            trouver_search.setVisibility(View.GONE);
+                                            new AnnulerAttribuerTask().execute(true);
                                         }
                                     })
                                     .setNegativeButton(android.R.string.no, new View.OnClickListener() {
                                         @Override
                                         public void onClick(View v) {
                                             trouver_search.setVisibility(View.GONE);
-                                            new AnnulerTrouverTask().execute(false);
-
+                                            new AnnulerAttribuerTask().execute(false);
 
                                         }
                                     }).show();
                         }
-
                     }
 
                 } catch (JSONException e) {
@@ -1457,33 +1378,6 @@ public class MapActivityTrouver extends AppCompatActivity implements
             }
         }
     }
-
-    private void setRepeatingAsyncTaskCheck() {
-
-        final Handler handler = new Handler();
-        Timer timer = new Timer();
-
-        taskTrouverCheck = new TimerTask() {
-            @Override
-            public void run() {
-                handler.post(new Runnable() {
-                    public void run() {
-                        try {
-                            if(id_attribuer!=0){
-                                new AfterAttribuerTask().execute(id_attribuer+"");
-                            }
-                        } catch (Exception e) {
-                            // error, do something
-                        }
-                    }
-                });
-            }
-        };
-
-        timer.schedule(taskTrouverCheck, 0, 6*1000);  // interval of one minute
-
-    }
-
     //-------------------Fin Trouver--------------------------------------------------
 
     @Override

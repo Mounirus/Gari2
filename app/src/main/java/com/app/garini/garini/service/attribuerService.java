@@ -3,9 +3,11 @@ package com.app.garini.garini.service;
 import android.app.Service;
 import android.content.Intent;
 import android.os.AsyncTask;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.support.annotation.NonNull;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 import com.app.garini.garini.MainActivity;
@@ -34,7 +36,9 @@ public class attribuerService extends Service {
     int attendu = 0;
     int id_attribuer = 0;
     private String URL = StaticValue.URL;
-
+    double lat,lng;
+    int nb_point;
+    UserSessionManager pref;
 
 
     @Override
@@ -45,10 +49,22 @@ public class attribuerService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         IS_SERVICE_RUNNING = true;
-        //Toast.makeText(this, "Service Started!", Toast.LENGTH_SHORT).show();
-        UserSessionManager pref = new UserSessionManager(getApplicationContext());
-        id_attribuer = pref.getIdAttribuer();
-        setRepeatingAsyncTask(id_attribuer);
+        pref = new UserSessionManager(this);
+        if(intent!=null && intent.getExtras()!=null){
+            Bundle inBundle = intent.getExtras();
+            if(inBundle != null) {
+                lat = inBundle.getDouble("lat");
+                lng = inBundle.getDouble("lng");
+                nb_point = inBundle.getInt("nb_point");
+                id_attribuer = inBundle.getInt("id_attribuer");
+                setRepeatingAsyncTask(id_attribuer);
+
+            }else{
+                stopSelf();
+            }
+        }else{
+            stopSelf();
+        }
 
         return START_STICKY;
     }
@@ -112,13 +128,15 @@ public class attribuerService extends Service {
                     if(!error){
                             attendu = jsonObject.getInt("attendu");
                             if(attendu != 0){
+                                pref.deleteDonner();
                                 stopSelf();
                                 task.cancel();
                                 if(MapActivity.active){
-                                    Intent intent = new Intent(getApplicationContext(), MainActivity.class);
+                                    //Intent intent = new Intent(getApplicationContext(), MainActivity.class);
+
+                                    Intent intent = new Intent("attribuerService");
                                     intent.putExtra("attendu",attendu);
-                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                    startActivity(intent);
+                                    sendLocationBroadcast(intent);
 
                                 }else{
                                     String message= null;
@@ -135,7 +153,7 @@ public class attribuerService extends Service {
                                         message = "L'automobiliste a signaler son départ";
                                     }
                                     NewMessageNotification notif =  new NewMessageNotification();
-                                    notif.notify2(getApplicationContext(),"Garini",id_attribuer,message,attendu);
+                                    notif.notify2(getApplicationContext(),"Gari",id_attribuer,message,attendu);
                                 }
                             }
 
@@ -170,5 +188,9 @@ public class attribuerService extends Service {
 
         timer.schedule(task, 0, 6*1000);  // interval of one minute
 
+    }
+
+    private void sendLocationBroadcast(Intent intent){
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
     }
 }

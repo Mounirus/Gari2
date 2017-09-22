@@ -53,7 +53,6 @@ public class MainActivity extends AppCompatActivity
 {
 
     private Boolean exit = false;
-    private ProgressDialog dialog;
     ImageView myImage;
     Fragment fragment = null;
     Class fragmentClass = null;
@@ -180,10 +179,7 @@ public class MainActivity extends AppCompatActivity
 
                 @Override
                 public void onLoadingStarted(String imageUri, View view) {
-                    dialog = new ProgressDialog(MainActivity.this);
-                    dialog.setTitle("Patientez un instant SVP...");
-                    dialog.setMessage("traitement en cours ");
-                    dialog.show();
+
                 }
 
                 @Override
@@ -193,9 +189,7 @@ public class MainActivity extends AppCompatActivity
 
                 @Override
                 public void onLoadingComplete(String imageUri, View view, Bitmap loadedImage) {
-                    if (dialog.isShowing()) {
-                        dialog.dismiss();
-                    }
+
                 }
 
                 @Override
@@ -204,8 +198,6 @@ public class MainActivity extends AppCompatActivity
                 }
             });
         }
-
-        //enableLocation();
 
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
 

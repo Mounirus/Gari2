@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.support.annotation.NonNull;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 import com.app.garini.garini.MapActivityTrouver;
@@ -17,6 +18,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -31,7 +34,6 @@ public class TrouverService extends Service {
     public static boolean IS_SERVICE_RUNNING = false;
     TimerTask task;
     int id_trouver;
-    int id_donner;
     private String URL = StaticValue.URL;
     double lat,lng;
     long t0;
@@ -48,7 +50,7 @@ public class TrouverService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         IS_SERVICE_RUNNING = true;
 
-        if(intent.getExtras()!=null){
+        if(intent!=null && intent.getExtras()!=null){
             Bundle inBundle = intent.getExtras();
             t0 = System.currentTimeMillis();
             if(inBundle != null) {
@@ -94,14 +96,18 @@ public class TrouverService extends Service {
         protected String doInBackground(String... params) {
             Response response = null;
             String json_string = null;
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            String currentDateandTime = sdf.format(new Date());
+
             Log.e(LOG_TAG,lat+" "+lng+" "+id_trouver+" time :"+t0);
             try {
                 OkHttpClient client = new OkHttpClient();
                 RequestBody body = new FormBody.Builder()
                         .add("id_trouver",params[0])
+                        .add("date_heur",currentDateandTime)
                         .build();
                 Request request = new Request.Builder()
-                        .url(URL+"donner_service.php")
+                        .url(URL+"service_trouver.php")
                         .post(body)
                         .build();
                 response = client.newCall(request).execute();
@@ -125,23 +131,41 @@ public class TrouverService extends Service {
             if (s != null && !s.equals("null")) {
                 try {
                     JSONObject jsonObject = new JSONObject(s);
+                    boolean error = jsonObject.getBoolean("error");
                     boolean donner = jsonObject.getBoolean("donner");
                     if(donner){
-                            id_donner = jsonObject.getInt("id");
+
+                            int id_attribuer = jsonObject.getInt("id_attribuer");
+                            String marque = jsonObject.getString("marque");
+                            String modele = jsonObject.getString("modele");
+                            String couleur = jsonObject.getString("couleur");
+                            String matricule = jsonObject.getString("matricule");
+                            String nom_user = jsonObject.getString("nom");
+                            double lat_destination = jsonObject.getDouble("lat");
+                            double lng_destination = jsonObject.getDouble("lng");
+                            String heur_liberer = jsonObject.getString("heur_liberer");
+
                             stopSelf();
                             task.cancel();
                             if(MapActivityTrouver.active){
-                                Intent intent = new Intent(getApplicationContext(), MapActivityTrouver.class);
-                                intent.putExtra("id_donner",id_donner);
-                                intent.putExtra("lat",lat);
-                                intent.putExtra("lng",lng);
-                                intent.putExtra("nb_point",nb_point);
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                startActivity(intent);
-
+                                Intent intent = new Intent("trouverService");
+                                intent.putExtra("id_attribuer",id_attribuer);
+                                intent.putExtra("lat_destination",lat_destination);
+                                intent.putExtra("lng_destination",lng_destination);
+                                intent.putExtra("heur_liberer",heur_liberer);
+                                intent.putExtra("marque",marque);
+                                intent.putExtra("modele",modele);
+                                intent.putExtra("couleur",couleur);
+                                intent.putExtra("matricule",matricule);
+                                intent.putExtra("nom_user",nom_user);
+                                sendLocationBroadcast(intent);
                             }else{
                                 NewMessageNotification notif =  new NewMessageNotification();
-                                notif.notify4(getApplicationContext(),"Gari",id_donner,"une place a été trouver, voulez-vous prendre cette place ?",id_donner,lat,lng,nb_point);
+                                notif.notify4(getApplicationContext(),
+                                        "Gari",id_attribuer,"une place a été trouver, voulez-vous prendre cette place ?",
+                                        id_attribuer,lat,lng,nb_point,lat_destination,lng_destination,heur_liberer,
+                                        marque,modele,couleur,matricule
+                                ,nom_user);
                             }
                     }
 
@@ -186,17 +210,16 @@ public class TrouverService extends Service {
     private void timeLimit(){
         stopSelf();
         if(MapActivityTrouver.active){
-            Intent intent = new Intent(getApplicationContext(), MapActivityTrouver.class);
+            Intent intent = new Intent("trouverService");
             intent.putExtra("timelimit",true);
-            intent.putExtra("lat",lat);
-            intent.putExtra("lng",lng);
-            intent.putExtra("nb_point",nb_point);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
+            sendLocationBroadcast(intent);
 
         }else{
             NewMessageNotification notif =  new NewMessageNotification();
-            notif.notify5(getApplicationContext(),"Gari",id_donner,"Aucun automobiliste trouver",true,lat,lng,nb_point);
+            notif.notify5(getApplicationContext(),"Gari",id_trouver,"Aucun automobiliste trouver",true,lat,lng,nb_point);
         }
+    }
+    private void sendLocationBroadcast(Intent intent){
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
     }
 }

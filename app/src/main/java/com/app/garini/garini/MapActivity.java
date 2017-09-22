@@ -3,20 +3,22 @@ package com.app.garini.garini;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.location.Location;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.os.Handler;
 import android.os.PowerManager;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.text.Html;
 import android.util.Log;
@@ -62,10 +64,6 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.TimeUnit;
-
 import okhttp3.FormBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -101,12 +99,10 @@ public class MapActivity extends AppCompatActivity implements
     TimePicker time;
     LatLng currentLatLng;
     int id_user;
-    int id_donner = 0, id_trouver = 0 ,  id_attribuer = 0, attendu = 0;
+    int id_donner = 0, id_attribuer = 0,attendu =0;
     String marque, modele, couleur, matricule,nom_user;
-    boolean isAttendu = false;
+    double lat_a,lng_a,lat_d,lng_d;
     UserSessionManager pref;
-    TimerTask taskDonner;
-    ProgressDialog dialog_attribuer;
     LovelyInfoDialog dialog_donner;
     TextView txt_attribuer;
     public static boolean now = false;
@@ -116,6 +112,97 @@ public class MapActivity extends AppCompatActivity implements
     int nb_point = 0;
     PowerManager pm;
     PowerManager.WakeLock wl;
+    private BroadcastReceiver mMessageReceiverDonnerService = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            timelimit = intent.getBooleanExtra("timelimit",false);
+            if(timelimit){
+                new AnnulerDonnerTask().execute();
+                donner_search.setVisibility(View.GONE);
+                new LovelyStandardDialog(MapActivity.this)
+                        .setTopColorRes(R.color.colorPrimary)
+                        .setButtonsColorRes(R.color.colorAccent)
+                        .setIcon(R.drawable.ic_directions_car_white_24dp)
+                        .setTitle("Donner votre place")
+                        .setMessage("Aucun automobiliste trouver, voulez affectuer une nouvelle recherche ?")
+                        .setPositiveButton(android.R.string.ok, new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+
+                                donner_layout.setVisibility(View.VISIBLE);
+                                donner_search.setVisibility(View.GONE);
+                            }
+                        })
+                        .setNegativeButton(android.R.string.no, new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+
+                                Intent intent = new Intent(MapActivity.this, MainActivity.class);
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                startActivity(intent);
+                                finish();
+
+                            }
+                        }).show();
+            }else{
+                id_attribuer = intent.getIntExtra("id_attribuer",0);
+                if(id_attribuer!=0){
+                    marque = intent.getStringExtra("marque");
+                    modele = intent.getStringExtra("modele");
+                    couleur = intent.getStringExtra("couleur");
+                    matricule = intent.getStringExtra("matricule");
+                    nom_user = intent.getStringExtra("nom_user");
+
+                    lat_a = intent.getDoubleExtra("lat_a",0);
+                    lat_d = intent.getDoubleExtra("lat_d",0);
+                    lng_a = intent.getDoubleExtra("lng_a",0);
+                    lng_d = intent.getDoubleExtra("lng_d",0);
+                    donner_layout.setVisibility(View.GONE);
+                    new LovelyStandardDialog(MapActivity.this)
+                            .setTopColorRes(R.color.colorPrimary)
+                            .setButtonsColorRes(R.color.colorAccent)
+                            .setIcon(R.drawable.ic_directions_car_white_24dp)
+                            .setTitle("Donner votre place")
+                            .setMessage("un automibiliste a été trouver, confirmez-vous la libération de votre place ?")
+                            .setPositiveButton("Oui", new View.OnClickListener() {
+                                @Override
+                                public void onClick(View v) {
+
+                                    if(dialog_donner != null){
+                                        dialog_donner.dismiss();
+                                    }
+                                    pref.createAttribuer(id_attribuer);
+                                    new GoogMatrixRequest().execute(lat_d,lng_d,lat_a,lng_a);
+                                }
+                            })
+                            .setNegativeButton("Non", new View.OnClickListener() {
+                                @Override
+                                public void onClick(View v) {
+                                    donner_search.setVisibility(View.GONE);
+                                    new AnnulerDonnerTask().execute();
+
+                                }
+                            }).show();
+                }
+            }
+        }
+    };
+
+    private BroadcastReceiver mMessageReceiverAttribuerService = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            attendu = intent.getIntExtra("attendu",0);
+            if(attendu!=0){
+                Intent i = new Intent(MapActivity.this, MainActivity.class);
+                i.putExtra("attendu",attendu);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+                finish();
+            }
+        }
+    };
 
 
     @Override
@@ -126,6 +213,7 @@ public class MapActivity extends AppCompatActivity implements
         pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wl = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, "Gari");
         wl.acquire();
+
 
         pref = new UserSessionManager(this);
 
@@ -139,16 +227,34 @@ public class MapActivity extends AppCompatActivity implements
             lat = inBundle.getDouble("lat");
             lng = inBundle.getDouble("lng");
             nb_point = inBundle.getInt("nb_point");
-            if(inBundle.get("id_trouver") !=null){
-                id_trouver = inBundle.getInt("id_trouver");
-            }
-            if(inBundle.get("attendu") !=null){
-                attendu = inBundle.getInt("attendu");
-                isAttendu = true;
+            if(inBundle.get("id_attribuer") !=null){
+
+                id_attribuer = inBundle.getInt("id_attribuer");
+                marque = inBundle.getString("marque");
+                modele = inBundle.getString("modele");
+                couleur = inBundle.getString("couleur");
+                matricule = inBundle.getString("matricule");
+                nom_user = inBundle.getString("nom_user");
+
+                lat_a = inBundle.getDouble("lat_a");
+                lat_d = inBundle.getDouble("lat_d");
+                lng_a = inBundle.getDouble("lng_a");
+                lng_d = inBundle.getDouble("lng_d");
+
             }
 
             if(inBundle.get("timelimit")!=null){
                 timelimit = inBundle.getBoolean("timelimit");
+            }
+            if(inBundle.get("attendu")!=null){
+                attendu = inBundle.getInt("attendu");
+                if (attendu!=0){
+                    Intent i = new Intent(MapActivity.this, MainActivity.class);
+                    i.putExtra("attendu",attendu);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                    finish();
+                }
             }
         }
 
@@ -366,9 +472,8 @@ public class MapActivity extends AppCompatActivity implements
                             @Override
                             public void onClick(View v) {
                                 stopService(new Intent(MapActivity.this, attribuerService.class));
-                                new AnnulerAttribuerTask().execute();
                                 new AnnulerDonnerTask().execute();
-                                //finish();
+
                             }
                         })
                         .setNegativeButton("Non", new View.OnClickListener() {
@@ -442,7 +547,7 @@ public class MapActivity extends AppCompatActivity implements
                             }
                         }).show();
             }else
-            if(id_trouver != 0 ){
+            if(id_attribuer != 0 ){
                 donner_layout.setVisibility(View.GONE);
                 new LovelyStandardDialog(MapActivity.this)
                         .setTopColorRes(R.color.colorPrimary)
@@ -453,7 +558,12 @@ public class MapActivity extends AppCompatActivity implements
                         .setPositiveButton("Oui", new View.OnClickListener() {
                             @Override
                             public void onClick(View v) {
-                                new AttribuerTask().execute(id_donner+"",id_trouver+"",id_attribuer+"");
+
+                                if(dialog_donner != null){
+                                    dialog_donner.dismiss();
+                                }
+                                pref.createAttribuer(id_attribuer);
+                                new GoogMatrixRequest().execute(lat_d,lng_d,lat_a,lng_a);
                             }
                         })
                         .setNegativeButton("Non", new View.OnClickListener() {
@@ -464,102 +574,12 @@ public class MapActivity extends AppCompatActivity implements
 
                             }
                         }).show();
-            }else{
-                if (pref.isAttribuer()){
-                    id_attribuer = pref.getIdAttribuer();
-                    if(isAttendu){
-                        if(attendu==3){
-                            donner_search.setVisibility(View.GONE);
-                            attiruber_layout.setVisibility(View.GONE);
-
-                            pref.deleteDonner();
-                            pref.deleteAttribuer();
-                            pref.setIdAttribuer(0);
-                            pref.setIdDonner(0);
-                            id_donner = 0;
-                            id_attribuer = 0;
-                            id_trouver = 0;
-                            Toast.makeText(this,"Vous n'avez pas attendu",Toast.LENGTH_LONG).show();
-                            new LovelyInfoDialog(this)
-                                    .setTopColorRes(R.color.colorPrimary)
-                                    .setIcon(R.drawable.ic_phone_android_white_24dp)
-                                    //This will add Don't show again checkbox to the dialog. You can pass any ID as argument
-                                    .setTitle("Information")
-                                    .setMessage("Vous n'avez pas attendu")
-                                    .show();
-                            finish();
-
-                        }else if(attendu == 1){
-                            donner_search.setVisibility(View.GONE);
-                            attiruber_layout.setVisibility(View.GONE);
-
-                            pref.deleteDonner();
-                            pref.deleteAttribuer();
-                            pref.setIdAttribuer(0);
-                            pref.setIdDonner(0);
-                            id_donner = 0;
-                            id_attribuer = 0;
-                            id_trouver = 0;
-
-                            new LovelyInfoDialog(this)
-                                    .setTopColorRes(R.color.colorPrimary)
-                                    .setIcon(R.drawable.ic_phone_android_white_24dp)
-                                    //This will add Don't show again checkbox to the dialog. You can pass any ID as argument
-                                    .setTitle("Information")
-                                    .setMessage(R.string.merci)
-                                    .show();
-                            finish();
-
-                        }else if(attendu == 2){
-                            donner_search.setVisibility(View.GONE);
-                            attiruber_layout.setVisibility(View.GONE);
-
-                            pref.deleteAttribuer();
-                            id_attribuer = 0;
-                            id_trouver = 0;
-
-                            new LovelyStandardDialog(this)
-                                    .setTopColorRes(R.color.colorPrimary)
-                                    .setButtonsColorRes(R.color.colorAccent)
-                                    .setIcon(R.drawable.ic_directions_car_white_24dp)
-                                    .setTitle("Donner votre place")
-                                    .setMessage("L'automobiliste a annuler sa demande , voulez attendre une autre demande ?")
-                                    .setPositiveButton(android.R.string.ok, new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View v) {
-                                            id_donner = pref.getIdDonner();
-                                            donner_search.setVisibility(View.GONE);
-                                            new AnnulerDonnerTask().execute();
-                                        }
-                                    })
-                                    .setNegativeButton(android.R.string.no, new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View v) {
-
-                                            id_donner = pref.getIdDonner();
-                                            donner_search.setVisibility(View.GONE);
-                                            new AnnulerDonnerTask().execute();
-                                            pref.deleteDonner();
-                                            pref.setIdAttribuer(0);
-                                            pref.setIdDonner(0);
-                                            finish();
-                                        }
-                                    }).show();
-                        }
-                    }else{
-                        new AttribuerTask().execute(id_donner+"",id_trouver+"",id_attribuer+"");
-                    }
-                }
             }
         }else{
             if(pref.getIdDonner()!=0){
                 donner_layout.setVisibility(View.VISIBLE);
                 id_donner = pref.getIdDonner();
                 new AnnulerDonnerTask().execute();
-                if(pref.getIdAttribuer()!=0){
-                    id_attribuer = pref.getIdAttribuer();
-                    new AnnulerAttribuerTask().execute();
-                }
             }
 
             donner_search.setVisibility(View.GONE);
@@ -732,19 +752,28 @@ public class MapActivity extends AppCompatActivity implements
             showMissingPermissionError();
             mPermissionDenied = false;
         }
+        //NewMessageNotification.cancel(this);
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+                mMessageReceiverDonnerService, new IntentFilter("donnerService"));
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+                mMessageReceiverAttribuerService, new IntentFilter("attribuerService"));
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         active = false;
+        wl.release();
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiverDonnerService);
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiverAttribuerService);
     }
 
     @Override
     protected void onStop() {
         super.onStop();
         active = false;
-        wl.release();
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiverDonnerService);
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiverAttribuerService);
     }
 
     @Override
@@ -818,101 +847,6 @@ public class MapActivity extends AppCompatActivity implements
         }
     }
 
-
-    /*class GetPointTask extends AsyncTask<Integer, Void, String> {
-
-        @Override
-        protected String doInBackground(Integer... params) {
-            Response response = null;
-            String json_string = null;
-
-            try {
-                OkHttpClient client = new OkHttpClient();
-                RequestBody body = new FormBody.Builder()
-                        .add("id_user",params[0]+"")
-                        .build();
-                Request request = new Request.Builder()
-                        .url(URL+"getpoint.php")
-                        .post(body)
-                        .build();
-                response = client.newCall(request).execute();
-                json_string = response.body().string();
-
-            } catch (@NonNull IOException e) {
-                Log.e("Json GetPoint", "" + e.getLocalizedMessage());
-            }
-
-            return json_string;
-        }
-
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-        }
-
-        @Override
-        protected void onPostExecute(String s) {
-            super.onPostExecute(s);
-            JSONObject jsonObject = null;
-            boolean error = false;
-
-            if (s != null && !s.equals("null")) {
-                Log.e("test",s);
-                try {
-                    jsonObject = new JSONObject(s);
-                    error = jsonObject.getBoolean("error");
-                    if(error){
-                        Toast.makeText(MapActivity.this,"Une erreur est survenue, veuillez recommencer",Toast.LENGTH_SHORT).show();
-                    }else{
-
-                        int nb_point = jsonObject.getInt("nb_point");
-                        point.setText(Html.fromHtml("Points récoltés :<br/>"+nb_point+" pts"));
-                    }
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-
-            }
-
-        }
-    }*/
-
-    public class AnnulerAttribuerTask extends AsyncTask<String, Void, Void> {
-
-        protected Void doInBackground(String... params) {
-            if(id_attribuer != 0){
-                try {
-                    OkHttpClient client = new OkHttpClient();
-                    RequestBody body = new FormBody.Builder()
-                            .add("id_attribuer",id_attribuer+"")
-                            .build();
-                    Request request = new Request.Builder()
-                            .url(URL+"annuler_attribuer.php")
-                            .post(body)
-                            .build();
-                    Response response = client.newCall(request).execute();
-                    response.body().string();
-
-                } catch (@NonNull IOException e) {
-                    Log.e("AnnulerAttribuerTask", "" + e.getLocalizedMessage());
-                }
-            }
-            return null;
-        }
-
-        @Override
-        protected void onPostExecute(Void aVoid) {
-            super.onPostExecute(aVoid);
-            id_attribuer = 0;
-            pref.deleteAttribuer();
-            if(attiruber_layout.getVisibility() == View.VISIBLE){
-                attiruber_layout.setVisibility(View.GONE);
-            }
-
-            pref.setIdAttribuer(0);
-        }
-    }
-
     //----------------Fin Taches commune-------------------------------------
 
     //----------------------Donner----------------------------------------------
@@ -970,7 +904,6 @@ public class MapActivity extends AppCompatActivity implements
                     long estimationMilli = now.getTime() + (duration_second*1000);
                     Date estimation = new Date(estimationMilli);
                     String heur_arriver = dateFormat.format(estimation);
-                    dialog_attribuer.dismiss();
 
                     String text = getString(R.string.donner_attribuer, marque+" "+modele, couleur,matricule,heur_arriver,nom_user);
                     /*String html = "Votre place a été attribué a :<br/>" +
@@ -982,7 +915,13 @@ public class MapActivity extends AppCompatActivity implements
                     txt_attribuer.setText(text);
                     donner_search.setVisibility(View.GONE);
                     attiruber_layout.setVisibility(View.VISIBLE);
-                    startService(new Intent(MapActivity.this, attribuerService.class));
+
+                    Intent intent = new Intent(MapActivity.this, attribuerService.class);
+                    intent.putExtra("id_attribuer",id_attribuer);
+                    intent.putExtra("lat",lat);
+                    intent.putExtra("lng",lng);
+                    intent.putExtra("nb_point",nb_point);
+                    startService(intent);
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
@@ -1060,13 +999,13 @@ public class MapActivity extends AppCompatActivity implements
                         id_donner = jsonObject.getInt("id_donner");
                         pref.createDonner(id_donner);
                         if(now){
-                            dialog_donner = new LovelyInfoDialog(MapActivity.this);
+                            /*dialog_donner = new LovelyInfoDialog(MapActivity.this);
                             dialog_donner.setTopColorRes(R.color.colorPrimary)
                                     .setIcon(R.drawable.ic_directions_car_white_24dp)
                                     //This will add Don't show again checkbox to the dialog. You can pass any ID as argument
                                     .setTitle("Donner votre place")
                                     .setMessage("Nous allons vous mettre en relation avec un automobiliste qui cherche une place, temps d’attente 3mn.")
-                                    .show();
+                                    .show();*/
                             //setRepeatingAsyncTask(id_donner);
 
                             SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -1078,6 +1017,7 @@ public class MapActivity extends AppCompatActivity implements
                                 intent.putExtra("id_donner",id_donner);
                                 intent.putExtra("lat",lat);
                                 intent.putExtra("lng",lng);
+                                intent.putExtra("nb_point",nb_point);
                                 intent.putExtra("now",now);
                                 PendingIntent pIntent = PendingIntent.getService(MapActivity.this, id_donner, intent, PendingIntent.FLAG_CANCEL_CURRENT);
                                 Log.e("map datas",lat+" "+lng+" "+now+" "+id_donner);
@@ -1110,7 +1050,7 @@ public class MapActivity extends AppCompatActivity implements
                                 intent.putExtra("id_donner",id_donner);
                                 intent.putExtra("lat",lat);
                                 intent.putExtra("lng",lng);
-                                intent.putExtra("now",now);
+                                intent.putExtra("nb_point",nb_point);
                                 PendingIntent pIntent = PendingIntent.getService(MapActivity.this, id_donner, intent, PendingIntent.FLAG_CANCEL_CURRENT);
 
                                 Calendar cal= Calendar.getInstance();
@@ -1136,132 +1076,6 @@ public class MapActivity extends AppCompatActivity implements
 
         }
     }
-
-    class AfterDonnerTask extends AsyncTask<String, Void, String> {
-
-        int id_trouver;
-        @Override
-        protected String doInBackground(String... params) {
-            Response response = null;
-            String json_string = null;
-            try {
-                OkHttpClient client = new OkHttpClient();
-                RequestBody body = new FormBody.Builder()
-                        .add("id_donner",params[0])
-                        .build();
-                Request request = new Request.Builder()
-                        .url(URL+"trouver_service.php")
-                        .post(body)
-                        .build();
-                response = client.newCall(request).execute();
-                json_string = response.body().string();
-
-            } catch (@NonNull IOException e) {
-                Log.e("Json AfterDonnerTask", "" + e.getLocalizedMessage());
-            }
-
-            return json_string;
-        }
-
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-        }
-
-        @Override
-        protected void onPostExecute(String s) {
-            super.onPostExecute(s);
-
-            if (s != null && !s.equals("null")) {
-                try {
-                    JSONObject jsonObject = new JSONObject(s);
-                    boolean trouver = jsonObject.getBoolean("trouver");
-                    if(trouver){
-                        id_trouver = jsonObject.getInt("id");
-                        new LovelyStandardDialog(MapActivity.this)
-                                .setTopColorRes(R.color.colorPrimary)
-                                .setButtonsColorRes(R.color.colorAccent)
-                                .setIcon(R.drawable.ic_directions_car_white_24dp)
-                                .setTitle("Donner votre place")
-                                .setMessage("un automibiliste a été trouver, confirmez-vous la libération de votre place ?")
-                                .setPositiveButton("Oui", new View.OnClickListener() {
-                                    @Override
-                                    public void onClick(View v) {
-                                        new AttribuerTask().execute(id_donner+"",id_trouver+"",id_attribuer+"");
-                                    }
-                                })
-                                .setNegativeButton("Non", new View.OnClickListener() {
-                                    @Override
-                                    public void onClick(View v) {
-                                        new AnnulerDonnerTask().execute();
-                                        donner_search.setVisibility(View.GONE);
-
-                                    }
-                                }).show();
-
-                        taskDonner.cancel();
-                    }
-
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-    }
-
-    /*private void setRepeatingAsyncTask(final int id_donner) {
-
-        final Handler handler = new Handler();
-        final Timer timer = new Timer();
-
-        taskDonner = new TimerTask() {
-            long t0 = System.currentTimeMillis();
-            @Override
-            public void run() {
-                if (System.currentTimeMillis() - t0 > 60 * 1000 * 3) {
-                    cancel();
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            new LovelyStandardDialog(MapActivity.this)
-                                    .setTopColorRes(R.color.colorPrimary)
-                                    .setButtonsColorRes(R.color.colorAccent)
-                                    .setIcon(R.drawable.ic_directions_car_white_24dp)
-                                    .setTitle("Donner votre place")
-                                    .setMessage("Aucun automobiliste trouver, voulez attendre encors ?")
-                                    .setPositiveButton(android.R.string.ok, new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View v) {
-
-                                            setRepeatingAsyncTask(id_donner);
-                                        }
-                                    })
-                                    .setNegativeButton(android.R.string.no, new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View v) {
-                                            new AnnulerDonnerTask().execute();
-                                            donner_search.setVisibility(View.GONE);
-
-                                        }
-                                    }).show();
-                        }
-                    });
-                }else {
-                    handler.post(new Runnable() {
-                        public void run() {
-                            try {
-                                new AfterDonnerTask().execute(id_donner+"");
-                            } catch (Exception e) {
-
-                            }
-                        }
-                    });
-                }
-            }
-        };
-        timer.schedule(taskDonner, 0, 6*1000);  // interval of one minute
-
-    }*/
 
     class AnnulerDonnerTask extends AsyncTask<String, Void, Void> {
 
@@ -1303,131 +1117,10 @@ public class MapActivity extends AppCompatActivity implements
             pref.setIdDonner(0);
             pref.deleteDonner();
             donner_search.setVisibility(View.GONE);
+            attiruber_layout.setVisibility(View.GONE);
             donner_layout.setVisibility(View.VISIBLE);
             diag.dismiss();
 
-
-        }
-    }
-
-    class AttribuerTask extends AsyncTask<String, Void, String> {
-
-        @Override
-        protected String doInBackground(String... params) {
-            Response response = null;
-            String json_string = null;
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            String currentDateandTime = sdf.format(new Date());
-            try {
-                OkHttpClient client = new OkHttpClient();
-                RequestBody body = new FormBody.Builder()
-                        .add("id_attribuer",params[2])
-                        .add("id_donner",params[0])
-                        .add("id_trouver",params[1])
-                        .add("date_heur",currentDateandTime)
-                        .build();
-                Request request = new Request.Builder()
-                        .url(URL+"attribuer.php")
-                        .post(body)
-                        .build();
-                response = client.newCall(request).execute();
-                json_string = response.body().string();
-
-            } catch (@NonNull IOException e) {
-                Log.e("Json AttributeTask", "" + e.getLocalizedMessage());
-            }
-
-            return json_string;
-        }
-
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-            dialog_attribuer = new ProgressDialog(MapActivity.this);
-            dialog_attribuer.setCancelable(false);
-            dialog_attribuer.setTitle("Patientez un instant SVP...");
-            dialog_attribuer.setMessage("traitement en cours ");
-            dialog_attribuer.show();
-        }
-
-        @Override
-        protected void onPostExecute(String s) {
-            super.onPostExecute(s);
-            JSONObject jsonObject = null;
-            boolean error = false;
-            boolean annuler = false;
-
-            if (s != null && !s.equals("null")) {
-                try {
-                    jsonObject = new JSONObject(s);
-                    error = jsonObject.getBoolean("error");
-                    annuler = jsonObject.getBoolean("annuler");
-                    if(error){
-
-                        Toast.makeText(MapActivity.this,"Une erreur est survenue, veuillez recommencer",Toast.LENGTH_SHORT).show();
-                        new AnnulerDonnerTask().execute(id_donner+"");
-                        new AnnulerAttribuerTask().execute(id_attribuer+"");
-                        dialog_attribuer.dismiss();
-                        finish();
-                    }else {
-                        if (annuler){
-                            dialog_attribuer.dismiss();
-                            id_attribuer = jsonObject.getInt("id_attribuer");
-                            new AnnulerAttribuerTask().execute(id_attribuer+"");
-                            new LovelyStandardDialog(MapActivity.this)
-                                    .setTopColorRes(R.color.colorPrimary)
-                                    .setButtonsColorRes(R.color.colorAccent)
-                                    .setIcon(R.drawable.ic_directions_car_white_24dp)
-                                    .setTitle("Donner votre place")
-                                    .setMessage("L'automobiliste a annuler sa demande , voulez attendre une autre demande ?")
-                                    .setPositiveButton(android.R.string.ok, new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View v) {
-                                            id_donner = pref.getIdDonner();
-                                            donner_search.setVisibility(View.GONE);
-                                            new AnnulerDonnerTask().execute();
-                                        }
-                                    })
-                                    .setNegativeButton(android.R.string.no, new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View v) {
-                                            id_donner = pref.getIdDonner();
-                                            donner_search.setVisibility(View.GONE);
-                                            new AnnulerDonnerTask().execute();
-                                            pref.deleteDonner();
-                                            pref.setIdAttribuer(0);
-                                            pref.setIdDonner(0);
-                                            Intent intent = new Intent(MapActivity.this, MainActivity.class);
-                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                            startActivity(intent);
-
-                                        }
-                                    }).show();
-                        }else{
-                            id_attribuer = jsonObject.getInt("id_attribuer");
-                            marque = jsonObject.getString("marque");
-                            modele = jsonObject.getString("modele");
-                            couleur = jsonObject.getString("couleur");
-                            matricule = jsonObject.getString("matricule");
-                            nom_user = jsonObject.getString("nom");
-                            double lat_d = jsonObject.getDouble("lat_d");
-                            double lat_a = jsonObject.getDouble("lat_a");
-                            double lng_a = jsonObject.getDouble("lng_a");
-                            double lng_d = jsonObject.getDouble("lng_d");
-
-                            if(dialog_donner != null){
-                                dialog_donner.dismiss();
-                            }
-                            pref.createAttribuer(id_attribuer);
-                            new GoogMatrixRequest().execute(lat_d,lng_d,lat_a,lng_a);
-                        }
-
-                    }
-
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
 
         }
     }

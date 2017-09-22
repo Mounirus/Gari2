@@ -88,6 +88,7 @@
         <service android:name=".service.DonnerService" />
         <service android:name=".service.attribuerService" />
         <service android:name=".service.TrouverService" />
+        <service android:name=".service.checkTrouverService" />
         <service
             android:name=".service.CleanService"
             android:stopWithTask="false" />
